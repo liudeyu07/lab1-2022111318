@@ -110,13 +110,31 @@ class WordGraph:
     def query_bridge_words(self, word1, word2):
         word1 = word1.lower()
         word2 = word2.lower()
+
+        # 检查单词是否存在
+        word1_exists = word1 in self.graph
+        word2_exists = word2 in self.graph
+
+        if not word1_exists and not word2_exists:
+            return f"No \"{word1}\" and \"{word2}\" in the graph!"
+        if not word1_exists:
+            return f"No \"{word1}\" in the graph!"
+        if not word2_exists:
+            return f"No \"{word2}\" in the graph!"
+
+        # 寻找桥接词
         bridges = []
-        if word1 not in self.graph or word2 not in self.graph:
-            return f"单词{word1}或{word2}不存在！"
         for bridge in self.graph[word1]:
             if word2 in self.graph.get(bridge, {}):
                 bridges.append(bridge)
-        return "，".join(bridges) if bridges else "无桥接词"
+
+        # 格式化输出
+        if not bridges:
+            return f"No bridge words from \"{word1}\" to \"{word2}\"!"
+        elif len(bridges) == 1:
+            return f"The bridge words from \"{word1}\" to \"{word2}\" is: \"{bridges[0]}\""
+        else:
+            return f"The bridge words from \"{word1}\" to \"{word2}\" are: " + ", ".join(f"\"{w}\"" for w in bridges)
 
     def generate_new_text(self, input_text):
         text = input_text.lower()
@@ -325,11 +343,12 @@ class WordGraph:
             pr_dict = self.calculate_pagerank(**kwargs)
             return round(pr_dict.get(word.lower(), 0), 4)
 
-    def random_walk(self, walk_callback=None, delay=0.5):
+    def random_walk(self, walk_callback=None, delay=0.5, update_callback=None):
         """
         改进的随机游走功能
-        walk_callback: 回调函数，用于检查是否应停止遍历
+        walk_callback: 检查是否停止的回调函数
         delay: 每次移动之间的延迟时间(秒)
+        update_callback: 更新UI的回调函数
         返回: (结果描述, 路径列表)
         """
         if not self.graph:
@@ -341,6 +360,10 @@ class WordGraph:
 
         try:
             while True:
+                # 更新UI显示
+                if update_callback:
+                    update_callback(path)
+
                 # 检查是否应该停止
                 if walk_callback and walk_callback():
                     break
@@ -353,7 +376,11 @@ class WordGraph:
                     break
 
                 # 随机选择下一个节点
-                next_node = random.choice(list(self.graph[current].keys()))
+                next_nodes = list(self.graph[current].keys())
+                if not next_nodes:
+                    break
+
+                next_node = random.choice(next_nodes)
                 edge = (current, next_node)
 
                 # 检查是否重复边
@@ -374,7 +401,7 @@ class WordGraph:
         except Exception as e:
             print(f"保存随机游走结果失败: {e}")
 
-        return "随机游走完成: " + " ".join(path), path
+        return "随机游走完成: " + " -> ".join(path), path
 
 
 # ==== UI界面完整实现 ====
@@ -463,11 +490,21 @@ class GraphUI(tk.Tk):
 
         threading.Thread(target=task, daemon=True).start()
 
+    def _output_bridge_result(self, result):
+        """格式化输出桥接词结果"""
+        if "No" in result and "bridge" in result:
+            self._output("✖ " + result)
+        elif "No" in result and "in the graph" in result:
+            self._output("✖ " + result)
+        else:
+            self._output("✓ " + result)
     def _bridge_dialog(self):
         d = BridgeDialog(self)
         self.wait_window(d)
         if d.result:
-            self._output(f"桥接词结果：\n{d.result}")
+            self._output("\n桥接词查询结果:")
+            self._output_bridge_result(d.result)
+
 
     def _path_dialog(self):
         d = PathDialog(self)
@@ -556,15 +593,16 @@ class GraphUI(tk.Tk):
         # 创建控制窗口
         walk_window = tk.Toplevel(self)
         walk_window.title("随机游走控制")
-        walk_window.protocol("WM_DELETE_WINDOW", lambda: setattr(self, 'stop_walk_flag', True))
+        walk_window.protocol("WM_DELETE_WINDOW", lambda: self._stop_walk(walk_window))
 
         # 当前路径显示区
         path_frame = ttk.Frame(walk_window)
         path_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
-        ttk.Label(path_frame, text="当前路径:").pack(anchor=tk.W)
+        ttk.Label(path_frame, text="实时路径:").pack(anchor=tk.W)
         self.path_text = scrolledtext.ScrolledText(path_frame, height=10, width=50)
         self.path_text.pack(fill=tk.BOTH, expand=True)
+        self.path_text.config(state=tk.DISABLED)  # 初始设置为不可编辑
 
         # 控制按钮区
         btn_frame = ttk.Frame(walk_window)
@@ -575,35 +613,54 @@ class GraphUI(tk.Tk):
         stop_btn.pack(side=tk.LEFT, padx=5)
 
         # 开始游走
-        threading.Thread(target=self._walk_task, daemon=True).start()
+        threading.Thread(target=self._walk_task, args=(walk_window,), daemon=True).start()
 
     def _stop_walk(self, window):
         """停止游走并关闭窗口"""
         self.stop_walk_flag = True
-        window.destroy()
+        if window:
+            window.destroy()
 
         # 显示最终结果
         if self.walk_path:
-            self._output("已停止随机游走，最终路径:")
+            self._output("\n已停止随机游走，最终路径:")
             self._output(" ".join(self.walk_path))
-            self._display_highlight(self.walk_path)
+            if len(self.walk_path) >= 2:
+                self._display_highlight(self.walk_path)
 
-    def _walk_task(self):
-        """执行随机游走的线程任务"""
-        # 设置延迟时间(默认为0.5秒，可根据需要调整)
-        delay = 0.5
-
-        def update_callback():
-            """更新UI的回调函数"""
+    def _update_path_display(self, path):
+        """更新路径显示的回调函数"""
+        if hasattr(self, 'path_text') and self.path_text.winfo_exists():
+            self.path_text.config(state=tk.NORMAL)
             self.path_text.delete(1.0, tk.END)
-            self.path_text.insert(tk.END, " ".join(self.walk_path))
+            self.path_text.insert(tk.END, " -> ".join(path))
+            self.path_text.see(tk.END)
+            self.path_text.config(state=tk.DISABLED)
+
+    def _walk_task(self, window):
+        """执行随机游走的线程任务"""
+
+        def should_stop():
             return self.stop_walk_flag
 
-        res_str, path = self.wg.random_walk(update_callback, delay)
+        def update_path(path):
+            self.walk_path = path
+            window.after(0, lambda: self._update_path_display(path))
+
+        # 设置延迟时间(秒)
+        delay = 0.5
+
+        res_str, path = self.wg.random_walk(
+            walk_callback=should_stop,
+            delay=delay,
+            update_callback=update_path
+        )
+
         self.walk_path = path
 
         # 在主界面显示结果
         self.after(0, lambda: self._output(res_str))
+        window.after(0, lambda: self._stop_walk(None))
 
     def _save_result(self):
         path = filedialog.asksaveasfilename(
@@ -612,7 +669,7 @@ class GraphUI(tk.Tk):
         )
         if path:
             try:
-                with open(path, 'w') as f:
+                with open(path, 'w',encoding='utf-8') as f:
                     f.write(self.output.get("1.0", tk.END))
                 self._output(f"结果已保存到：{os.path.basename(path)}")
             except Exception as e:
