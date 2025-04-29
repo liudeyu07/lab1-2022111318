@@ -505,7 +505,6 @@ class GraphUI(tk.Tk):
             self._output("\n桥接词查询结果:")
             self._output_bridge_result(d.result)
 
-
     def _path_dialog(self):
         d = PathDialog(self)
         self.wait_window(d)
@@ -519,8 +518,9 @@ class GraphUI(tk.Tk):
             else:
                 # 两个单词的情况
                 msg, path_dict = self.wg.calc_shortest_path(d.words[0], d.words[1])
-                self._output(f"{msg}\n路径：{' → '.join(list(path_dict.values())[0])}")
-                if path_dict:
+                self._output(msg)  # 显示消息(会包含是否存在单词的信息)
+                if path_dict:  # 只有当path_dict不为空时才尝试显示路径
+                    self._output(f"路径：{' → '.join(list(path_dict.values())[0])}")
                     self._display_highlight(list(path_dict.values())[0])
 
     def _pr_dialog(self):
@@ -580,40 +580,73 @@ class GraphUI(tk.Tk):
             self._output(f"生成文本：\n{result}")
 
     def _do_random_walk(self):
-        """改进的随机游走功能，带停止按钮和实时显示"""
         if not self._check_loaded():
             return
 
         self._output("开始随机游走...(点击停止按钮可随时终止)")
 
-        # 创建全局变量控制游走
-        self.stop_walk_flag = False
+        # 使用线程安全标志
+        self.stop_walk_flag = threading.Event()
         self.walk_path = []
+        self.walk_thread = None
 
         # 创建控制窗口
         walk_window = tk.Toplevel(self)
         walk_window.title("随机游走控制")
-        walk_window.protocol("WM_DELETE_WINDOW", lambda: self._stop_walk(walk_window))
 
-        # 当前路径显示区
-        path_frame = ttk.Frame(walk_window)
-        path_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        def on_close():
+            self.stop_walk_flag.set()
+            if self.walk_thread and self.walk_thread.is_alive():
+                self.walk_thread.join(timeout=1)
+            walk_window.destroy()
 
-        ttk.Label(path_frame, text="实时路径:").pack(anchor=tk.W)
-        self.path_text = scrolledtext.ScrolledText(path_frame, height=10, width=50)
-        self.path_text.pack(fill=tk.BOTH, expand=True)
-        self.path_text.config(state=tk.DISABLED)  # 初始设置为不可编辑
+        walk_window.protocol("WM_DELETE_WINDOW", on_close)
 
-        # 控制按钮区
-        btn_frame = ttk.Frame(walk_window)
-        btn_frame.pack(pady=5)
+        # 添加停止按钮
+        stop_btn = ttk.Button(walk_window, text="停止", command=on_close)
+        stop_btn.pack(pady=10)
 
-        stop_btn = ttk.Button(btn_frame, text="停止并保存",
-                              command=lambda: self._stop_walk(walk_window))
-        stop_btn.pack(side=tk.LEFT, padx=5)
+        # 添加实时显示区域
+        path_var = tk.StringVar()
+        path_label = ttk.Label(walk_window, textvariable=path_var, wraplength=300)
+        path_label.pack(pady=5)
 
-        # 开始游走
-        threading.Thread(target=self._walk_task, args=(walk_window,), daemon=True).start()
+        def update_display(path):
+            path_var.set(" -> ".join(path))
+            self._update_status(f"随机游走中... 当前路径长度: {len(path)}")
+
+        def walk_task():
+            result, path = self.wg.random_walk(
+                walk_callback=lambda: self.stop_walk_flag.is_set(),
+                delay=0.5,
+                update_callback=update_display
+            )
+
+            # 确保只在游走完成后执行一次
+            self.after(0, lambda: self._output("\n随机游走结果: " + result))
+
+            # 显示最终路径图（只显示一次）
+            if path:
+                try:
+                    self.after(0, lambda: self._display_walk_path(path))
+                except Exception as e:
+                    print(f"显示路径图失败: {e}")
+
+        # 启动游走线程
+        self.walk_thread = threading.Thread(target=walk_task, daemon=True)
+        self.walk_thread.start()
+
+    def _display_walk_path(self, path):
+        """显示随机游走路径图"""
+        # 确保不重复生成图形
+        if not hasattr(self, 'walk_path_image'):
+            self.wg.highlight_path(path)
+            img = ImageTk.PhotoImage(Image.open("highlight_path.png"))
+            win = tk.Toplevel(self)
+            win.title("随机游走路径")
+            label = ttk.Label(win, image=img)
+            label.image = img
+            label.pack()
 
     def _stop_walk(self, window):
         """停止游走并关闭窗口"""
