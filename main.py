@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, scrolledtext, simpledialog
-from tkinter.constants import LEFT  # 修正布局参数导入
+import time
 import os
 import random
 import threading
@@ -135,25 +135,64 @@ class WordGraph:
             result.append(next_word)
         return ' '.join(result)
 
-    def calc_shortest_path(self, start, end):
+    def calc_shortest_path(self, start, end=None):
+        """
+        计算最短路径，如果end为None则计算到所有节点的最短路径
+        返回: (消息字符串, 路径字典) 路径字典为 {目标节点: 路径列表}
+        """
         start = start.lower()
-        end = end.lower()
-        if start not in self.graph or end not in self.graph:
-            return "单词不存在", []
+        if start not in self.graph:
+            return "起始单词不存在", {}
 
+        if end is not None:
+            end = end.lower()
+            if end not in self.graph:
+                return "目标单词不存在", {}
+            return self._calc_single_path(start, end)
+        else:
+            return self._calc_all_paths(start)
+
+    def _calc_single_path(self, start, end):
+        """计算单条最短路径"""
         heap = [(0, start, [])]
         visited = set()
         while heap:
             cost, node, path = heapq.heappop(heap)
             if node == end:
-                return f"最短路径长度：{cost}", path + [node]
+                return f"最短路径长度：{cost}", {end: path + [node]}
             if node in visited:
                 continue
             visited.add(node)
             for neighbor in self.graph[node]:
                 heapq.heappush(heap,
                                (cost + self.graph[node][neighbor], neighbor, path + [node]))
-        return "路径不存在", []
+        return "路径不存在", {}
+
+    def _calc_all_paths(self, start):
+        """计算到所有节点的最短路径"""
+        heap = [(0, start, [])]
+        visited = {}
+        paths = {}
+
+        while heap:
+            cost, node, path = heapq.heappop(heap)
+            if node in visited:
+                continue
+            visited[node] = cost
+            paths[node] = path + [node]
+
+            for neighbor in self.graph[node]:
+                if neighbor not in visited:
+                    heapq.heappush(heap,
+                                   (cost + self.graph[node][neighbor], neighbor, path + [node]))
+
+        # 移除起始节点自身
+        del paths[start]
+
+        if not paths:
+            return "没有找到其他可达节点", {}
+
+        return f"找到从'{start}'到{len(paths)}个节点的最短路径", paths
 
     def highlight_path(self, path):
         if not path: return
@@ -286,28 +325,56 @@ class WordGraph:
             pr_dict = self.calculate_pagerank(**kwargs)
             return round(pr_dict.get(word.lower(), 0), 4)
 
-    def random_walk(self):
+    def random_walk(self, walk_callback=None, delay=0.5):
+        """
+        改进的随机游走功能
+        walk_callback: 回调函数，用于检查是否应停止遍历
+        delay: 每次移动之间的延迟时间(秒)
+        返回: (结果描述, 路径列表)
+        """
         if not self.graph:
             return "无法执行随机游走（图为空）", []
+
         current = random.choice(list(self.graph.keys()))
         path = [current]
         visited_edges = set()
-        while True:
-            if current not in self.graph:
-                break
-            next_nodes = list(self.graph[current].keys())
-            if not next_nodes:
-                break
-            next_node = random.choice(next_nodes)
-            edge = (current, next_node)
-            if edge in visited_edges:
-                break
-            visited_edges.add(edge)
-            path.append(next_node)
-            current = next_node
-        with open("random_walk.txt", "w") as f:
-            f.write(" -> ".join(path))
-        return " -> ".join(path), path
+
+        try:
+            while True:
+                # 检查是否应该停止
+                if walk_callback and walk_callback():
+                    break
+
+                # 添加延迟以降低速度
+                time.sleep(delay)
+
+                # 检查是否有出边
+                if current not in self.graph or not self.graph[current]:
+                    break
+
+                # 随机选择下一个节点
+                next_node = random.choice(list(self.graph[current].keys()))
+                edge = (current, next_node)
+
+                # 检查是否重复边
+                if edge in visited_edges:
+                    break
+
+                visited_edges.add(edge)
+                path.append(next_node)
+                current = next_node
+
+        except KeyboardInterrupt:
+            pass
+
+        # 保存到文件(不带箭头)
+        try:
+            with open("random_walk.txt", "w", encoding='utf-8') as f:
+                f.write(" ".join(path))  # 改用空格分隔
+        except Exception as e:
+            print(f"保存随机游走结果失败: {e}")
+
+        return "随机游走完成: " + " ".join(path), path
 
 
 # ==== UI界面完整实现 ====
@@ -406,10 +473,18 @@ class GraphUI(tk.Tk):
         d = PathDialog(self)
         self.wait_window(d)
         if d.result:
-            msg, path = self.wg.calc_shortest_path(d.words[0], d.words[1])
-            self._output(f"{msg}\n路径：{' → '.join(path)}")
-            if path:
-                self._display_highlight(path)
+            if len(d.words) == 1:
+                # 只有一个单词的情况
+                msg, paths = self.wg.calc_shortest_path(d.words[0])
+                self._output(msg)
+                for target, path in paths.items():
+                    self._output(f"到 '{target}' 的最短路径: {' → '.join(path)}")
+            else:
+                # 两个单词的情况
+                msg, path_dict = self.wg.calc_shortest_path(d.words[0], d.words[1])
+                self._output(f"{msg}\n路径：{' → '.join(list(path_dict.values())[0])}")
+                if path_dict:
+                    self._display_highlight(list(path_dict.values())[0])
 
     def _pr_dialog(self):
         if not self._check_loaded(): return
@@ -468,13 +543,67 @@ class GraphUI(tk.Tk):
             self._output(f"生成文本：\n{result}")
 
     def _do_random_walk(self):
-        def task():
-            res_str, path = self.wg.random_walk()
-            self._output(f"随机游走结果：\n{res_str}")
-            if path:
-                self.after(0, lambda: self._display_highlight(path))
+        """改进的随机游走功能，带停止按钮和实时显示"""
+        if not self._check_loaded():
+            return
 
-        threading.Thread(target=task, daemon=True).start()
+        self._output("开始随机游走...(点击停止按钮可随时终止)")
+
+        # 创建全局变量控制游走
+        self.stop_walk_flag = False
+        self.walk_path = []
+
+        # 创建控制窗口
+        walk_window = tk.Toplevel(self)
+        walk_window.title("随机游走控制")
+        walk_window.protocol("WM_DELETE_WINDOW", lambda: setattr(self, 'stop_walk_flag', True))
+
+        # 当前路径显示区
+        path_frame = ttk.Frame(walk_window)
+        path_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+
+        ttk.Label(path_frame, text="当前路径:").pack(anchor=tk.W)
+        self.path_text = scrolledtext.ScrolledText(path_frame, height=10, width=50)
+        self.path_text.pack(fill=tk.BOTH, expand=True)
+
+        # 控制按钮区
+        btn_frame = ttk.Frame(walk_window)
+        btn_frame.pack(pady=5)
+
+        stop_btn = ttk.Button(btn_frame, text="停止并保存",
+                              command=lambda: self._stop_walk(walk_window))
+        stop_btn.pack(side=tk.LEFT, padx=5)
+
+        # 开始游走
+        threading.Thread(target=self._walk_task, daemon=True).start()
+
+    def _stop_walk(self, window):
+        """停止游走并关闭窗口"""
+        self.stop_walk_flag = True
+        window.destroy()
+
+        # 显示最终结果
+        if self.walk_path:
+            self._output("已停止随机游走，最终路径:")
+            self._output(" ".join(self.walk_path))
+            self._display_highlight(self.walk_path)
+
+    def _walk_task(self):
+        """执行随机游走的线程任务"""
+        # 设置延迟时间(默认为0.5秒，可根据需要调整)
+        delay = 0.5
+
+        def update_callback():
+            """更新UI的回调函数"""
+            self.path_text.delete(1.0, tk.END)
+            self.path_text.insert(tk.END, " ".join(self.walk_path))
+            return self.stop_walk_flag
+
+        res_str, path = self.wg.random_walk(update_callback, delay)
+        self.walk_path = path
+
+        # 在主界面显示结果
+        self.after(0, lambda: self._output(res_str))
 
     def _save_result(self):
         path = filedialog.asksaveasfilename(
@@ -553,7 +682,7 @@ class BridgeDialog(tk.Toplevel):
 class PathDialog(tk.Toplevel):
     def __init__(self, master):
         super().__init__(master)
-        self.words = ("", "")
+        self.words = []
         self.result = None
         self.start = tk.StringVar()
         self.end = tk.StringVar()
@@ -561,21 +690,36 @@ class PathDialog(tk.Toplevel):
 
     def _setup_ui(self):
         self.title("最短路径查询")
-        ttk.Label(self, text="起始词：").grid(row=0, column=0, padx=5, pady=5)
-        ttk.Entry(self, textvariable=self.start).grid(row=0, column=1)
-        ttk.Label(self, text="目标词：").grid(row=1, column=0)
-        ttk.Entry(self, textvariable=self.end).grid(row=1, column=1)
+        self.geometry("400x200")
+
+        # 说明文本
+        ttk.Label(self,
+                  text="输入1个单词查询到所有节点的最短路径\n输入2个单词查询特定路径").pack(pady=5)
+
+        # 输入框框架
+        input_frame = ttk.Frame(self)
+        input_frame.pack(pady=10)
+
+        ttk.Label(input_frame, text="起始词：").grid(row=0, column=0, padx=5, pady=5)
+        ttk.Entry(input_frame, textvariable=self.start).grid(row=0, column=1)
+        ttk.Label(input_frame, text="目标词(可选)：").grid(row=1, column=0)
+        ttk.Entry(input_frame, textvariable=self.end).grid(row=1, column=1)
+
+        # 按钮框架
         btn_frame = ttk.Frame(self)
-        btn_frame.grid(row=2, columnspan=2, pady=10)
-        ttk.Button(btn_frame, text="确定", command=self._submit).pack(side=tk.LEFT, padx=5)
+        btn_frame.pack(pady=10)
+
+        ttk.Button(btn_frame, text="查询", command=self._submit).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text="取消", command=self.destroy).pack(side=tk.LEFT)
 
     def _submit(self):
         s = self.start.get().strip()
         e = self.end.get().strip()
-        if s and e:
-            self.words = (s, e)
-            self.result = self.master.wg.calc_shortest_path(s, e)
+        if s:
+            self.words = [s]
+            if e:
+                self.words.append(e)
+            self.result = True
             self.destroy()
 
 
