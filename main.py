@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from PIL import ImageTk, Image
 from tkinter import scrolledtext, Toplevel
 import re
-import math  # 需要用于k值计算
+import math
 import numpy as np
 from math import log
 # ==== WordGraph类完整实现 ====
@@ -60,11 +60,15 @@ class WordGraph:
 
             # 绘制曲线边 (使用connectionstyle参数)
             edge_options = {
-                'arrowsize': 15,
-                'width': 1,
-                'connectionstyle': 'arc3,rad=0.1',  # 使边弯曲
-                'edge_color': 'gray',
-                'alpha': 0.7
+            'arrowsize': 20,  # 比之前更大的箭头尺寸
+            'arrowstyle': '->',  # 明确的箭头样式
+            'width': 1.5,  # 稍粗的边线
+            'connectionstyle': 'arc3,rad=0.1',
+            'edge_color': 'darkgray',  # 更深的边颜色
+            'alpha': 0.9,
+            'node_size': 800,  # 单独设置node_size
+            'min_source_margin': 15,  # 箭头与源节点的最小距离
+            'min_target_margin': 15   # 箭头与目标节点的最小距离
             }
 
             # 绘制节点和边
