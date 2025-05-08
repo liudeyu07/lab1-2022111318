@@ -1,3 +1,4 @@
+b2修改了文件
 成功加载文件：text.txt
 最短路径长度：3
 路径：to → explore → strange → new
