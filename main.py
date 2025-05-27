@@ -14,6 +14,8 @@ import re
 import math
 import numpy as np
 from math import log
+
+
 # ==== WordGraph类完整实现 ====
 class WordGraph:
     def __init__(self):
@@ -60,15 +62,15 @@ class WordGraph:
 
             # 绘制曲线边 (使用connectionstyle参数)
             edge_options = {
-            'arrowsize': 20,  # 比之前更大的箭头尺寸
-            'arrowstyle': '->',  # 明确的箭头样式
-            'width': 1.5,  # 稍粗的边线
-            'connectionstyle': 'arc3,rad=0.1',
-            'edge_color': 'darkgray',  # 更深的边颜色
-            'alpha': 0.9,
-            'node_size': 800,  # 单独设置node_size
-            'min_source_margin': 15,  # 箭头与源节点的最小距离
-            'min_target_margin': 15   # 箭头与目标节点的最小距离
+                'arrowsize': 20,  # 比之前更大的箭头尺寸
+                'arrowstyle': '->',  # 明确的箭头样式
+                'width': 1.5,  # 稍粗的边线
+                'connectionstyle': 'arc3,rad=0.1',
+                'edge_color': 'darkgray',  # 更深的边颜色
+                'alpha': 0.9,
+                'node_size': 800,  # 单独设置node_size
+                'min_source_margin': 15,  # 箭头与源节点的最小距离
+                'min_target_margin': 15  # 箭头与目标节点的最小距离
             }
 
             # 绘制节点和边
@@ -274,8 +276,6 @@ class WordGraph:
             for dst, weight in self.graph[src].items():
                 self.nx_graph.add_edge(src, dst, weight=weight)
 
-
-
     def _compute_tfidf(self):
         """计算单词的TF-IDF权重"""
         word_docs = defaultdict(int)
@@ -341,11 +341,11 @@ class WordGraph:
         return {node: float(pr[i]) for i, node in enumerate(nodes)}
 
     def cal_page_rank(self, word, **kwargs):
-            """
+        """
             兼容原接口的PR查询
             """
-            pr_dict = self.calculate_pagerank(**kwargs)
-            return round(pr_dict.get(word.lower(), 0), 4)
+        pr_dict = self.calculate_pagerank(**kwargs)
+        return round(pr_dict.get(word.lower(), 0), 4)
 
     def random_walk(self, walk_callback=None, delay=0.5, update_callback=None):
         """
@@ -502,6 +502,7 @@ class GraphUI(tk.Tk):
             self._output("✖ " + result)
         else:
             self._output("✓ " + result)
+
     def _bridge_dialog(self):
         d = BridgeDialog(self)
         self.wait_window(d)
@@ -706,7 +707,7 @@ class GraphUI(tk.Tk):
         )
         if path:
             try:
-                with open(path, 'w',encoding='utf-8') as f:
+                with open(path, 'w', encoding='utf-8') as f:
                     f.write(self.output.get("1.0", tk.END))
                 self._output(f"结果已保存到：{os.path.basename(path)}")
             except Exception as e:
