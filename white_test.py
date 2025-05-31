@@ -1,6 +1,5 @@
 import pytest
 from collections import defaultdict
-import heapq
 
 
 # 导入WordGraph类 - 使用以下方式之一:
@@ -58,7 +57,6 @@ class TestCalcShortestPath:
     # 路径4: 单点到单点，heap为空无法找到路径
     def test_single_path_not_exist(self, setup_graph):
         """测试基本路径4: 单点到单点，路径不存在"""
-        wg = setup_graph
         # 创建一个新的独立图来测试路径不存在的情况
         test_wg = WordGraph()
         test_wg.graph["isolated"] = defaultdict(int)  # 孤立的起始节点
@@ -68,24 +66,31 @@ class TestCalcShortestPath:
         assert message == "路径不存在"
         assert paths == {}
 
-    # 路径5: 单点到单点，节点已访问过（跳过）
+    # 路径5: 单点到单点，节点已访问过（跳过continue分支）
     def test_single_path_visited_skip(self, setup_graph):
-        """测试基本路径5: 单点到单点，节点已访问跳过"""
-        wg = setup_graph
-        # 添加一个环路
-        wg.graph["dog"]["lazy"] = 1
-        wg.graph["lazy"]["the"] = 1
-        message, paths = wg.calc_shortest_path("the", "dog")
-        assert "最短路径长度" in message
-        # 验证找到的是最短路径，不会被环路影响
-        assert len(paths["dog"]) == 3
+        """测试基本路径5: 单点到单点，测试visited节点跳过逻辑"""
+        # 创建专门的测试图
+        wg = WordGraph()
+
+        # 确保所有节点都存在于图中
+        wg.graph["start"]["a"] = 1
+        wg.graph["start"]["b"] = 2
+        wg.graph["a"]["c"] = 1
+        wg.graph["b"]["c"] = 1  # c会通过两条路径被加入heap
+        wg.graph["c"]["target"] = 1
+        wg.graph["target"] = defaultdict(int)  # 确保target节点存在
+
+        message, paths = wg.calc_shortest_path("start", "target")
+        assert "最短路径长度：3" in message
+        # 最短路径应该是 start -> a -> c -> target
+        assert paths["target"] == ["start", "a", "c", "target"]
 
     # 路径6: 单点到单点，节点未访问继续搜索
     def test_single_path_multiple_steps(self, setup_graph):
         """测试基本路径6: 单点到单点，多步骤搜索"""
         wg = setup_graph
         message, paths = wg.calc_shortest_path("the", "fox")
-        assert "最短路径长度" in message
+        assert "最短路径长度：3" in message
         assert paths["fox"] == ["the", "quick", "brown", "fox"]
 
     # 路径7: 单点到所有点，成功找到多个路径
@@ -93,39 +98,44 @@ class TestCalcShortestPath:
         """测试基本路径7: 单点到所有点，成功找到多个路径"""
         wg = setup_graph
         message, paths = wg.calc_shortest_path("the")
-        assert "找到" in message and "个节点的最短路径" in message
+        assert "找到从'the'到5个节点的最短路径" in message
         assert len(paths) == 5  # quick, brown, fox, lazy, dog
-        for word in ["quick", "lazy", "dog", "brown", "fox"]:
-            assert word in paths
+        expected_nodes = {"quick", "lazy", "dog", "brown", "fox"}
+        assert set(paths.keys()) == expected_nodes
 
-    # 路径8: 单点到所有点，节点已访问（跳过）
+    # 路径8: 单点到所有点，节点已访问（跳过continue分支）
     def test_all_paths_visited_skip(self, setup_graph):
-        """测试基本路径8: 单点到所有点，节点已访问跳过"""
-        wg = setup_graph
-        # 添加环路
-        wg.graph["dog"]["the"] = 1
-        message, paths = wg.calc_shortest_path("the")
-        # 即使有环路，仍应找到所有节点的最短路径
-        assert "找到" in message
-        assert len(paths) == 5
-        # dog应该通过更短的路径到达
-        assert len(paths["dog"]) < 5
+        """测试基本路径8: 单点到所有点，测试_calc_all_paths中的visited跳过逻辑"""
+        # 专门构造一个会产生visited跳过的图
+        wg = WordGraph()
+        wg.graph["start"]["a"] = 1
+        wg.graph["start"]["b"] = 2
+        wg.graph["a"]["target"] = 1
+        wg.graph["b"]["target"] = 1  # 两条路径都能到达target，但通过a的更短
 
-    # 路径9: 单点到所有点，heap为空后正常结束
-    def test_all_paths_normal_end(self, setup_graph):
-        """测试基本路径9: 单点到所有点，正常结束处理"""
-        wg = setup_graph
-        # 修改图以确保heap最终为空
-        test_graph = WordGraph()
-        test_graph.graph["start"]["end"] = 1
-        message, paths = test_graph.calc_shortest_path("start")
-        assert "找到从'start'到1个节点的最短路径" in message
-        assert paths == {"end": ["start", "end"]}
+        message, paths = wg.calc_shortest_path("start")
+        assert "找到从'start'到3个节点的最短路径" in message
+        # 验证target是通过最短路径(start->a->target)到达的
+        assert paths["target"] == ["start", "a", "target"]
+
+    # 路径9: 单点到所有点，简单情况正常结束
+    def test_all_paths_simple_case(self):
+        """测试基本路径9: 单点到所有点，简单图的正常结束情况"""
+        # 创建一个简单的线性图，确保测试与其他用例不同
+        wg = WordGraph()
+        wg.graph["first"]["second"] = 1
+        wg.graph["second"]["third"] = 1
+
+        message, paths = wg.calc_shortest_path("first")
+        assert "找到从'first'到2个节点的最短路径" in message
+        assert len(paths) == 2
+        assert paths["second"] == ["first", "second"]
+        assert paths["third"] == ["first", "second", "third"]
 
     # 路径10: 单点到所有点，没有可达节点
-    def test_all_paths_no_reachable(self, setup_graph):
+    def test_all_paths_no_reachable(self):
         """测试基本路径10: 单点到所有点，没有可达节点"""
-        wg = WordGraph()  # 创建空图
+        wg = WordGraph()
         wg.graph["isolated"] = defaultdict(int)  # 添加孤立节点
         message, paths = wg.calc_shortest_path("isolated")
         assert message == "没有找到其他可达节点"
@@ -135,4 +145,3 @@ class TestCalcShortestPath:
 if __name__ == "__main__":
     # 运行测试
     pytest.main([__file__, "-v"])
-

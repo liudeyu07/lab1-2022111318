@@ -9,7 +9,6 @@ class TestQueryBridgeWords:
     @pytest.fixture
     def setup_word_graph(self):
         """设置测试用的词图"""
-        # 修正测试内容，确保词图结构清晰
         test_content = """
         apple good nice. good nice great.
         cat runs fast. fast means quick. quick helps speed.
@@ -20,7 +19,7 @@ class TestQueryBridgeWords:
             f.write(test_content)
             temp_file = f.name
 
-        # 需要导入WordGraph类
+        # 导入WordGraph类
         from main import WordGraph
         wg = WordGraph()
         wg.build_graph(temp_file)
@@ -100,4 +99,3 @@ class TestQueryBridgeWords:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
-

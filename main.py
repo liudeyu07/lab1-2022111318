@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox, scrolledtext, simpledialog
+from tkinter import ttk, filedialog, messagebox, scrolledtext
 import time
 import os
 import random
@@ -9,11 +9,12 @@ import heapq
 import networkx as nx
 import matplotlib.pyplot as plt
 from PIL import ImageTk, Image
-from tkinter import scrolledtext, Toplevel
+from tkinter import Toplevel
 import re
 import math
-import numpy as np
 from math import log
+import numpy as np
+
 
 
 # ==== WordGraph类完整实现 ====
@@ -92,7 +93,7 @@ class WordGraph:
                 G, pos,
                 font_size=9,
                 font_weight='bold',
-                bbox=dict(facecolor='white', edgecolor='none', alpha=0.7)
+                bbox={'facecolor': 'white', 'edgecolor': 'none', 'alpha': 0.7}
             )
 
             # 添加边权重标签
@@ -102,7 +103,7 @@ class WordGraph:
                 G, pos,
                 edge_labels=edge_labels,
                 font_size=8,
-                bbox=dict(facecolor='white', edgecolor='none', alpha=0.7)
+                bbox={'facecolor': 'white', 'edgecolor': 'none', 'alpha': 0.7}
             )
 
             plt.tight_layout()
@@ -137,10 +138,10 @@ class WordGraph:
         # 格式化输出
         if not bridges:
             return f"No bridge words from \"{word1}\" to \"{word2}\"!"
-        elif len(bridges) == 1:
+        if len(bridges) == 1:
             return f"The bridge words from \"{word1}\" to \"{word2}\" is: \"{bridges[0]}\""
-        else:
-            return f"The bridge words from \"{word1}\" to \"{word2}\" are: " + ", ".join(f"\"{w}\"" for w in bridges)
+
+        return f"The bridge words from \"{word1}\" to \"{word2}\" are: " + ", ".join(f"\"{w}\"" for w in bridges)
 
     def generate_new_text(self, input_text):
         text = input_text.lower()
@@ -173,8 +174,8 @@ class WordGraph:
             if end not in self.graph:
                 return "目标单词不存在", {}
             return self._calc_single_path(start, end)
-        else:
-            return self._calc_all_paths(start)
+
+        return self._calc_all_paths(start)
 
     def _calc_single_path(self, start, end):
         """计算单条最短路径"""
@@ -219,7 +220,8 @@ class WordGraph:
         return f"找到从'{start}'到{len(paths)}个节点的最短路径", paths
 
     def highlight_path(self, path):
-        if not path: return
+        if not path:
+            return
         G = nx.DiGraph()
         edge_colors = []
         for src in self.graph:
@@ -282,17 +284,15 @@ class WordGraph:
         tf = defaultdict(dict)
 
         for i, sent in enumerate(self.sentences):
-            words = set(sent.split())
-            for word in words:
+            for word in set(sent.split()):
                 tf[i][word] = tf[i].get(word, 0) + 1
                 word_docs[word] += 1
         tfidf = defaultdict(dict)
         for doc_id, word_counts in tf.items():
             max_tf = max(word_counts.values()) if word_counts else 1
             for word, count in word_counts.items():
-                tf_val = 0.5 + 0.5 * (count / max_tf)
                 idf = log(len(self.sentences) / (1 + word_docs[word]))
-                tfidf[doc_id][word] = tf_val * idf
+                tfidf[doc_id][word] = (0.5 + 0.5 * (count / max_tf)) * idf
         global_weights = defaultdict(float)
         for doc_weights in tfidf.values():
             for word, weight in doc_weights.items():
@@ -308,12 +308,10 @@ class WordGraph:
         if not hasattr(self, 'nx_graph'):
             return {}
 
-        nodes = sorted(self.nx_graph.nodes())
-        n = len(nodes)
-        node_index = {node: i for i, node in enumerate(nodes)}
+        node_index = {node: i for i, node in enumerate(sorted(self.nx_graph.nodes()))}
 
         # 构建转移矩阵
-        M = np.zeros((n, n))
+        M = np.zeros((len(sorted(self.nx_graph.nodes())), len(sorted(self.nx_graph.nodes()))))
         for src, dest, data in self.nx_graph.edges(data=True):
             M[node_index[dest], node_index[src]] = data.get('weight', 1)
 
@@ -323,22 +321,22 @@ class WordGraph:
 
         # 处理悬挂节点(全为0的列)
         dangling = np.where(M.sum(axis=0) == 0)[0]
-        M[:, dangling] = 1.0 / n
+        M[:, dangling] = 1.0 / len(sorted(self.nx_graph.nodes()))
 
         # 初始化PR值(使用TF-IDF权重)
         initial_weights = self._compute_tfidf()
-        pr = np.array([initial_weights.get(node, 1.0 / n) for node in nodes])
+        pr = np.array([initial_weights.get(node, 1.0 / len(sorted(self.nx_graph.nodes()))) for node in sorted(self.nx_graph.nodes())])
         pr = pr / pr.sum()  # 归一化
 
         # 迭代计算
         for _ in range(max_iter):
-            new_pr = damping * M @ pr + (1 - damping) / n
+            new_pr = damping * M @ pr + (1 - damping) / len(sorted(self.nx_graph.nodes()))
             delta = np.abs(new_pr - pr).sum()
             pr = new_pr
             if delta < tol:
                 break
 
-        return {node: float(pr[i]) for i, node in enumerate(nodes)}
+        return {node: float(pr[i]) for i, node in enumerate(sorted(self.nx_graph.nodes()))}
 
     def cal_page_rank(self, word, **kwargs):
         """
@@ -409,13 +407,70 @@ class WordGraph:
 
 
 # ==== UI界面完整实现 ====
+
+
 class GraphUI(tk.Tk):
+    class FileData:
+        def __init__(self):
+            self.file_loaded = False
+            self.file_path = tk.StringVar()
+
+        def get_file_path(self):
+            """获取文件路径"""
+            return self.file_path.get()
+
+        def set_file_path(self, path):
+            """设置文件路径"""
+            self.file_path.set(path)
+
+        def mark_as_loaded(self):
+            """标记文件为已加载"""
+            self.file_loaded = True
+
+        def mark_as_not_loaded(self):
+            """标记文件为未加载"""
+            self.file_loaded = False
+
+    # 使用内部类来封装与随机游走相关的属性
+    class WalkData:
+        def __init__(self):
+            self.stop_walk_flag = threading.Event()
+            self.walk_path = []
+            self.walk_thread = None
+
+        def start_walk(self):
+            """启动随机游走"""
+            self.stop_walk_flag.clear()
+
+        def stop_walk(self):
+            """停止随机游走"""
+            self.stop_walk_flag.set()
+
+        def is_stopped(self):
+            """检查是否已停止游走"""
+            return self.stop_walk_flag.is_set()
+
+        def set_walk_path(self, path):
+            """设置游走路径"""
+            self.walk_path = path
+
+        def get_walk_path(self):
+            """获取当前游走路径"""
+            return self.walk_path
+
     def __init__(self):
         super().__init__()
-        self.wg = WordGraph()
-        self.file_loaded = False
+
+        # 使用数据类封装文件和随机游走相关属性
+        self.config_data = self.FileData()  # 文件相关
+        self.walk_data = self.WalkData()  # 随机游走相关
+
+        # 初始化其它界面组件
+        self.wg = WordGraph()  # 词图对象
+        self.output = scrolledtext.ScrolledText(self, wrap=tk.WORD, height=20)
+        self.status = ttk.Label(self, text="就绪", relief=tk.SUNKEN)
+
         self._setup_ui()
-        self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _setup_ui(self):
         self.title("Word Graph Analyzer")
@@ -426,8 +481,7 @@ class GraphUI(tk.Tk):
         control_frame.pack(fill=tk.X, padx=5, pady=5)
 
         # 文件选择区
-        self.file_path = tk.StringVar()
-        file_entry = ttk.Entry(control_frame, textvariable=self.file_path, width=50)
+        file_entry = ttk.Entry(control_frame, textvariable=self.config_data.file_path, width=50)
         file_entry.pack(side=tk.LEFT, padx=5)
         ttk.Button(control_frame, text="浏览", command=self._browse_file).pack(side=tk.LEFT)
         ttk.Button(control_frame, text="加载", command=self._load_file).pack(side=tk.LEFT, padx=5)
@@ -444,11 +498,9 @@ class GraphUI(tk.Tk):
         self._create_button(func_frame, "保存结果", self._save_result)
 
         # 输出展示区
-        self.output = scrolledtext.ScrolledText(self, wrap=tk.WORD, height=20)
         self.output.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
         # 状态栏
-        self.status = ttk.Label(self, text="就绪", relief=tk.SUNKEN)
         self.status.pack(fill=tk.X, side=tk.BOTTOM)
 
     def _create_button(self, parent, text, command):
@@ -459,19 +511,19 @@ class GraphUI(tk.Tk):
     def _browse_file(self):
         path = filedialog.askopenfilename(filetypes=[("文本文件", "*.txt")])
         if path:
-            self.file_path.set(path)
+            self.config_data.file_path.set(path)
             self.status.config(text=f"已选定文件：{os.path.basename(path)}")
 
     def _load_file(self):
         def load_task():
-            path = self.file_path.get()
+            path = self.config_data.file_path.get()
             if not path:
                 self._show_error("请先选择文件")
                 return
             self._update_status("正在加载并构建词图...")
             try:
                 self.wg.build_graph(path)
-                self.file_loaded = True
+                self.config_data.file_loaded = True
                 self._output(f"成功加载文件：{os.path.basename(path)}")
                 self._update_status("文件加载完成")
             except Exception as e:
@@ -480,7 +532,8 @@ class GraphUI(tk.Tk):
         threading.Thread(target=load_task, daemon=True).start()
 
     def _show_graph(self):
-        if not self._check_loaded(): return
+        if not self._check_loaded():
+            return
         self._update_status("正在生成图谱...")
 
         def task():
@@ -529,7 +582,8 @@ class GraphUI(tk.Tk):
                     self._display_highlight(list(path_dict.values())[0])
 
     def _pr_dialog(self):
-        if not self._check_loaded(): return
+        if not self._check_loaded():
+            return
 
         def show_results():
             d = PRDialog(self)
@@ -591,114 +645,38 @@ class GraphUI(tk.Tk):
         self._output("开始随机游走...(点击停止按钮可随时终止)")
 
         # 使用线程安全标志
-        self.stop_walk_flag = threading.Event()
-        self.walk_path = []
-        self.walk_thread = None
+        self.walk_data.stop_walk_flag.clear()  # 重置标志
+        self.walk_data.walk_thread = threading.Thread(target=self._random_walk_task, daemon=True)
+        self.walk_data.walk_thread.start()
 
-        # 创建控制窗口
-        walk_window = tk.Toplevel(self)
-        walk_window.title("随机游走控制")
+    def _random_walk_task(self):
+        result, path = self.wg.random_walk(
+            walk_callback=lambda: self.walk_data.stop_walk_flag.is_set(),
+            delay=0.5,
+            update_callback=self._update_walk_display
+        )
+        self.after(0, lambda: self._output(result))
+        if path:
+            self.after(0, lambda: self._display_walk_path(path))
 
-        def on_close():
-            self.stop_walk_flag.set()
-            if self.walk_thread and self.walk_thread.is_alive():
-                self.walk_thread.join(timeout=1)
-            walk_window.destroy()
-
-        walk_window.protocol("WM_DELETE_WINDOW", on_close)
-
-        # 添加停止按钮
-        stop_btn = ttk.Button(walk_window, text="停止", command=on_close)
-        stop_btn.pack(pady=10)
-
-        # 添加实时显示区域
-        path_var = tk.StringVar()
-        path_label = ttk.Label(walk_window, textvariable=path_var, wraplength=300)
-        path_label.pack(pady=5)
-
-        def update_display(path):
-            path_var.set(" -> ".join(path))
-            self._update_status(f"随机游走中... 当前路径长度: {len(path)}")
-
-        def walk_task():
-            result, path = self.wg.random_walk(
-                walk_callback=lambda: self.stop_walk_flag.is_set(),
-                delay=0.5,
-                update_callback=update_display
-            )
-
-            # 确保只在游走完成后执行一次
-            self.after(0, lambda: self._output("\n随机游走结果: " + result))
-
-            # 显示最终路径图（只显示一次）
-            if path:
-                try:
-                    self.after(0, lambda: self._display_walk_path(path))
-                except Exception as e:
-                    print(f"显示路径图失败: {e}")
-
-        # 启动游走线程
-        self.walk_thread = threading.Thread(target=walk_task, daemon=True)
-        self.walk_thread.start()
+    def _update_walk_display(self, path):
+        self.walk_data.walk_path = path
+        self._output(f"当前路径：{' -> '.join(path)}")
 
     def _display_walk_path(self, path):
-        """显示随机游走路径图"""
-        # 确保不重复生成图形
-        if not hasattr(self, 'walk_path_image'):
-            self.wg.highlight_path(path)
-            img = ImageTk.PhotoImage(Image.open("highlight_path.png"))
-            win = tk.Toplevel(self)
-            win.title("随机游走路径")
-            label = ttk.Label(win, image=img)
-            label.image = img
-            label.pack()
+        self.wg.highlight_path(path)
+        img = ImageTk.PhotoImage(Image.open("highlight_path.png"))
+        win = tk.Toplevel(self)
+        win.title("随机游走路径")
+        label = ttk.Label(win, image=img)
+        label.image = img
+        label.pack()
 
     def _stop_walk(self, window):
-        """停止游走并关闭窗口"""
-        self.stop_walk_flag = True
+        self.walk_data.stop_walk_flag.set()
         if window:
             window.destroy()
-
-        # 显示最终结果
-        if self.walk_path:
-            self._output("\n已停止随机游走，最终路径:")
-            self._output(" ".join(self.walk_path))
-            if len(self.walk_path) >= 2:
-                self._display_highlight(self.walk_path)
-
-    def _update_path_display(self, path):
-        """更新路径显示的回调函数"""
-        if hasattr(self, 'path_text') and self.path_text.winfo_exists():
-            self.path_text.config(state=tk.NORMAL)
-            self.path_text.delete(1.0, tk.END)
-            self.path_text.insert(tk.END, " -> ".join(path))
-            self.path_text.see(tk.END)
-            self.path_text.config(state=tk.DISABLED)
-
-    def _walk_task(self, window):
-        """执行随机游走的线程任务"""
-
-        def should_stop():
-            return self.stop_walk_flag
-
-        def update_path(path):
-            self.walk_path = path
-            window.after(0, lambda: self._update_path_display(path))
-
-        # 设置延迟时间(秒)
-        delay = 0.5
-
-        res_str, path = self.wg.random_walk(
-            walk_callback=should_stop,
-            delay=delay,
-            update_callback=update_path
-        )
-
-        self.walk_path = path
-
-        # 在主界面显示结果
-        self.after(0, lambda: self._output(res_str))
-        window.after(0, lambda: self._stop_walk(None))
+        self._output(f"已停止随机游走，最终路径: {' -> '.join(self.walk_data.walk_path)}")
 
     def _save_result(self):
         path = filedialog.asksaveasfilename(
@@ -736,7 +714,7 @@ class GraphUI(tk.Tk):
         self.output.see(tk.END)
 
     def _check_loaded(self):
-        if not self.file_loaded:
+        if not self.config_data.file_loaded:
             self._show_error("请先加载文本文件！")
             return False
         return True
